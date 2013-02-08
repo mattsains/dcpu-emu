@@ -15,19 +15,24 @@ namespace DCPU16_emu
         static void Main()
         {
             //testing code
-            dcpu d = new dcpu();
-            d.load(@"set b,1
-set a,64
-add b,a
-sub pc,1");
-            for (; ; )
-                d.tick();
+            string[] program=
+            {
+                "set b,1",
+                "set a,2",
+                "set pc,end",
+                "add b,a",
+                ":end",
+                "",
+                "add a,b"
+            };
 
-            
-           /* //</testing code>
+
+            foreach (ushort opcode in compile.opcodeify(program))
+                Debug.Print("{0:x}",opcode);
+            //</testing code>
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new Form1());*/
+            Application.Run(new Form1());
         }
     }
 }
