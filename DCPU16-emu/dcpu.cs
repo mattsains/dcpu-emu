@@ -89,7 +89,7 @@ namespace DCPU16_emu
                 //now safe to remove all spaces
                 int space;
                 while ((space = bstr.IndexOf(' ')) > 0)
-                    bstr.Remove(space, 1);
+                    bstr=bstr.Remove(space, 1);
 
                 b = 0;
                 if (bstr[0] == '[')
@@ -162,7 +162,7 @@ namespace DCPU16_emu
                 string astr = instruction.Substring(commapos + 1).Trim();
                 //remove all spaces
                 while ((space = astr.IndexOf(' ')) > 0)
-                    astr.Remove(space, 1);
+                    astr=astr.Remove(space, 1);
                 a = 0;
                 if (astr[0] == '[')
                 {
@@ -236,7 +236,90 @@ namespace DCPU16_emu
             }
             else
             {
-                //TODO: handle special instructions
+                //Handle special, single-argument instructions
+                string astr = instruction.Substring(spos + 1).Trim();
+                switch (mnemonic)
+                {
+                    case "jsr": b = 0x01; break;
+                    case "int": b = 0x08; break;
+                    case "iag": b = 0x09; break;
+                    case "ias": b = 0x0a; break;
+                    case "rfi": b = 0x0b; break;
+                    case "iaq": b = 0x0c; break;
+                    case "hwn": b = 0x10; break;
+                    case "hwq": b = 0x11; break;
+                }
+                //figure out the argument
+                int space;
+                while ((space = astr.IndexOf(' ')) > 0)
+                    astr=astr.Remove(space, 1);
+                a = 0;
+                if (astr[0] == '[')
+                {
+                    //is a pointer
+                    //check if it's a [register+next word]
+                    a = 0x8;
+                    if (astr.Contains('+'))
+                    {
+                        if (char.IsNumber(astr[1]))
+                            // yoda instruction: [5+a]
+                            // convert to normal style
+                            astr = '[' + astr.Substring(astr.IndexOf('+') + 1, astr.IndexOf(']') - astr.IndexOf('+')) + '+' + astr.Substring(1, astr.IndexOf('+') - 1);
+                        a = 0x10;
+                        aliteral = ushort.Parse(astr.Substring(astr.IndexOf('+') + 1, astr.IndexOf(']') - astr.IndexOf('+')-1));
+                        astr = astr.Substring(1, astr.IndexOf('+') - 1);//this and the next line leave only the register name/memory address
+                    }
+                    else astr = astr.Substring(1, astr.Length - 2);
+                }
+                switch (astr)
+                {
+                    case "a": a += 0; break;
+                    case "b": a += 1; break;
+                    case "c": a += 2; break;
+                    case "x": a += 3; break;
+                    case "y": a += 4; break;
+                    case "z": a += 5; break;
+                    case "i": a += 6; break;
+                    case "j": a += 7; break;
+
+                    case "pop": a = 0x18; break;
+                    case "sp":
+                        if (a == 0x8)
+                            a = 0x19;//[SP] see also: peek
+                        if (a == 0x10)
+                            a = 0x1a;//[SP+literal]
+                        if (a == 0)
+                            a = 0x1b;//SP
+                        break;
+                    case "peek": a = 0x19; break;
+                    /***** not gonna implement "PICK n" ****/
+                    case "pc":
+                        if (a != 0)
+                            throw new Exception("Pointers to PC not allowed");
+                        a = 0x1c;
+                        break;
+                    case "ex":
+                        if (a != 0)
+                            throw new Exception("Pointers to EX not allowed");
+                        a = 0x1d;
+                        break;
+                    default:
+                        //this must be a literal
+                        if (a == 0x8)
+                        {
+                            // [literal]
+                            a = 0x1e;
+                            aliteral = ushort.Parse(astr);
+                        }
+                        else if (ushort.Parse(astr) < 32)
+                            a = (byte)(byte.Parse(astr) + 0x20);
+                        else
+                        {
+                            a = 0x1f;
+                            aliteral = ushort.Parse(astr);
+                        }
+                        break;
+                }
             }
             
             //construct the instruction code

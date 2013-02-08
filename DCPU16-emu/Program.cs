@@ -16,7 +16,7 @@ namespace DCPU16_emu
         {
             //testing code
             dcpu d = new dcpu();
-            ushort[] output = d.encode("add [26], 1");
+            ushort[] output = d.encode("jsr [a + 45]");
             foreach (ushort word in output)
                 Debug.Print("{0:x}",word);
             
