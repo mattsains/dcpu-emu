@@ -16,14 +16,18 @@ namespace DCPU16_emu
         {
             //testing code
             dcpu d = new dcpu();
-            ushort[] output = d.encode("jsr [a + 45]");
-            foreach (ushort word in output)
-                Debug.Print("{0:x}",word);
+            d.load(@"set b,1
+set a,64
+add b,a
+sub pc,1");
+            for (; ; )
+                d.tick();
+
             
-            //</testing code>
+           /* //</testing code>
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new Form1());
+            Application.Run(new Form1());*/
         }
     }
 }
