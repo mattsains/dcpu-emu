@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
+using System.Diagnostics;
 
 namespace DCPU16_emu
 {
@@ -13,6 +14,13 @@ namespace DCPU16_emu
         [STAThread]
         static void Main()
         {
+            //testing code
+            dcpu d = new dcpu();
+            ushort[] output = d.encode("add [26], 1");
+            foreach (ushort word in output)
+                Debug.Print("{0:x}",word);
+            
+            //</testing code>
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new Form1());

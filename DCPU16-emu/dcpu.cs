@@ -14,7 +14,13 @@ namespace DCPU16_emu
         ushort PC, EX, IA = new ushort();
         ushort SP = 0xffff;//start of the reverse stack
 
-        static ushort[] encode(string instruction)
+        public void tick()
+        {
+            //perform one instruction
+            //TODO: yes
+        }
+
+        public ushort[] encode(string instruction)
         {
             //here I have to parse strings. oh deary
             //remove unnecessary whitespace
@@ -73,13 +79,13 @@ namespace DCPU16_emu
                     opcode = 0; break;
                 default: throw new Exception("Invalid mnemonic");
             }
-            byte a, b;
+            byte a=0, b=0;
             ushort? aliteral=null, bliteral = null;
             //extract the arguments
             if (opcode != 0)
             {
                 int commapos = instruction.IndexOf(',');
-                string bstr = instruction.Substring(spos + 1, commapos - spos);
+                string bstr = instruction.Substring(spos + 1, commapos - spos-1);
                 //now safe to remove all spaces
                 int space;
                 while ((space = bstr.IndexOf(' ')) > 0)
@@ -242,12 +248,12 @@ namespace DCPU16_emu
 
             ushort[] output = new ushort[words];
             output[0] = opcode;
-            output[0] |= (ushort)(b << 5);
+            output[0] |= (ushort)(b << 4);
             output[0] |= (ushort)(a << 10);
-            if (aliteral.HasValue)
-                output[1] = aliteral.Value;
             if (bliteral.HasValue)
-                output[2] = bliteral.Value;
+                output[--words] = bliteral.Value;
+            if (aliteral.HasValue)
+                output[--words] = aliteral.Value;
 
             return output;
         }
