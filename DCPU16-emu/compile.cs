@@ -21,9 +21,9 @@ namespace DCPU16_emu
             {
                 if (instructions[i].Substring(0, (instructions[i].IndexOf(';') > 0) ? instructions[i].IndexOf(';') : instructions[i].Length).Trim() == "")
                     continue;//a blank
-                instructions[i] = instructions[i].Substring(0, instructions[i].Contains(';') ? instructions[i].IndexOf(';') : instructions[i].Length);
+                instructions[i] = instructions[i].Substring(0, instructions[i].Contains(';') ? instructions[i].IndexOf(';') : instructions[i].Length).Trim();
                 originstructions[i]=instructions[i];
-                if (instructions[i].Trim()[0] == ':')
+                if (instructions[i]!="" && instructions[i].Trim()[0] == ':')
                     labels.Add(instructions[i].Trim().Substring(1));
             }
             for (int i = 0; i < instructions.Length; i++)
@@ -38,7 +38,7 @@ namespace DCPU16_emu
             for (int i=0; i<originstructions.Length;i++)
                 if (originstructions[i]!=null)
                     if (originstructions[i].Trim()[0] == ':')
-                        labeladdr.Add(originstructions[i].Trim().Substring(1), (ushort)(address-last));
+                        labeladdr.Add(originstructions[i].Trim().Substring(1), (ushort)(address));
                     else
                         address += last=(ushort)length(instructions[i]);
             // labeladdr should now hold the addresses of labels
@@ -50,15 +50,23 @@ namespace DCPU16_emu
                         originstructions[i]=originstructions[i].Replace(':', ';');//turn label definitions into comments
                         continue;
                     }
+                    bool haslabel = false;
                     foreach (KeyValuePair<string, ushort> label in labeladdr)
                         while (originstructions[i].Contains(label.Key))
-                            originstructions[i]=originstructions[i].Replace(label.Key, label.Value.ToString());
+                        {
+                            originstructions[i] = originstructions[i].Replace(label.Key, label.Value.ToString());
+                            haslabel = true;
+                        }
+                    if (haslabel) originstructions[i] += 'l';
                 }
             List<ushort> code = new List<ushort>();
             foreach (string instruction in originstructions)
-                if (instruction!=null)
-                    if (instruction.Trim()[0]!=';')
-                        code.AddRange(encode(instruction));
+                if (instruction != null)
+                    if (instruction.Trim()[0] != ';')
+                        if (instruction.EndsWith("l"))
+                            code.AddRange(encode(instruction.Remove(instruction.Length - 1), false));
+                        else
+                            code.AddRange(encode(instruction));
             return code.ToArray();
         }
         /// <summary>
@@ -73,8 +81,9 @@ namespace DCPU16_emu
                 return 0;
             else
             {
+                bool haslabel = instruction.Contains("label");
                 instruction = instruction.Replace("label", "128");
-                return encode(instruction).Length;
+                return encode(instruction,!haslabel).Length;
             }
         }
         /// <summary>
@@ -82,7 +91,7 @@ namespace DCPU16_emu
         /// </summary>
         /// <param name="instruction">Mnemonic</param>
         /// <returns>an array of words</returns>
-        public static ushort[] encode(string instruction)
+        public static ushort[] encode(string instruction,bool allowLiteralOptimization=true)
         {
             if (instruction.StartsWith(";")) return null;//a comment
             //here I have to parse strings. oh deary
@@ -285,7 +294,7 @@ namespace DCPU16_emu
                             a = 0x1e;
                             aliteral = ushort.Parse(astr);
                         }
-                        else if (ushort.Parse(astr) < 32)
+                        else if (ushort.Parse(astr) < 32 && allowLiteralOptimization)
                             a = (byte)(byte.Parse(astr) + 0x20);
                         else
                         {
@@ -375,7 +384,7 @@ namespace DCPU16_emu
                             a = 0x1e;
                             aliteral = ushort.Parse(astr);
                         }
-                        else if (ushort.Parse(astr) < 32)
+                        else if (ushort.Parse(astr) < 32 && allowLiteralOptimization)
                             a = (byte)(byte.Parse(astr) + 0x20);
                         else
                         {
