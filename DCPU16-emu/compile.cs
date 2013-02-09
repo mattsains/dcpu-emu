@@ -2,72 +2,160 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Globalization;
 
 namespace DCPU16_emu
 {
     static class compile
     {
+        public static ushort[] opcodeify(string instructions)
+        {
+            return opcodeify(instructions.Split(new char[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries));
+        }
+        public static ushort[] opcodeify(string[] instructions)
+        {
+            return opcodeify(new List<string>(instructions));
+        }
         /// <summary>
         /// This one resolves labels
         /// </summary>
         /// <param name="instructions"></param>
         /// <returns></returns>
-        public static ushort[] opcodeify(string[] instructions)
+        public static ushort[] opcodeify(List<string> instructions)
         {
-            List<string> labels = new List<string>();
-            string[] originstructions=new string[instructions.Length];
-
-            for (int i = 0; i < instructions.Length; i++)
+            for (int i = 0; i < instructions.Count; i++)
             {
-                if (instructions[i].Substring(0, (instructions[i].IndexOf(';') > 0) ? instructions[i].IndexOf(';') : instructions[i].Length).Trim() == "")
-                    continue;//a blank
-                instructions[i] = instructions[i].Substring(0, instructions[i].Contains(';') ? instructions[i].IndexOf(';') : instructions[i].Length).Trim();
-                originstructions[i]=instructions[i];
-                if (instructions[i]!="" && instructions[i].Trim()[0] == ':')
-                    labels.Add(instructions[i].Trim().Substring(1));
-            }
-            for (int i = 0; i < instructions.Length; i++)
-                foreach (string label in labels)
-                    while (instructions[i].Contains(label))
-                        instructions[i]=instructions[i].Replace(label, "label");
-            //instructions now contains the instructions with all labels renamed "label" and no comments
-            Dictionary<string, ushort> labeladdr = new Dictionary<string, ushort>();
-
-            ushort address = 0;
-            ushort last = 0;
-            for (int i=0; i<originstructions.Length;i++)
-                if (originstructions[i]!=null)
-                    if (originstructions[i].Trim()[0] == ':')
-                        labeladdr.Add(originstructions[i].Trim().Substring(1), (ushort)(address));
-                    else
-                        address += last=(ushort)length(instructions[i]);
-            // labeladdr should now hold the addresses of labels
-            for (int i = 0; i < originstructions.Length; i++)
-            if (originstructions[i]!=null)
+                //remove comments
+                if (instructions[i].Contains(';'))
+                    instructions[i] = instructions[i].Remove(instructions[i].IndexOf(';'));
+                instructions[i] = instructions[i].Trim().ToLower();
+                //remove blank lines
+                if (instructions[i] == "")
                 {
-                    if (originstructions[i].Trim()[0] == ':')
-                    {
-                        originstructions[i]=originstructions[i].Replace(':', ';');//turn label definitions into comments
-                        continue;
-                    }
-                    bool haslabel = false;
-                    foreach (KeyValuePair<string, ushort> label in labeladdr)
-                        while (originstructions[i].Contains(label.Key))
-                        {
-                            originstructions[i] = originstructions[i].Replace(label.Key, label.Value.ToString());
-                            haslabel = true;
-                        }
-                    if (haslabel) originstructions[i] += 'l';
+                    instructions.RemoveAt(i);
+                    i--;//I think?
+                    continue;
                 }
-            List<ushort> code = new List<ushort>();
-            foreach (string instruction in originstructions)
-                if (instruction != null)
-                    if (instruction.Trim()[0] != ';')
-                        if (instruction.EndsWith("l"))
-                            code.AddRange(encode(instruction.Remove(instruction.Length - 1), false));
+            }
+            //we now have code with no comments, and no blank lines
+            //get a list of labels
+            Dictionary<string, ushort> labels = new Dictionary<string, ushort>();
+            for (int i = 0; i < instructions.Count; i++)
+                if (instructions[i][0] == ':')
+                    labels.Add(instructions[i].Substring(1),0);
+            //we now have a list of all the defined labels. time to make an array of them stripped
+            List<string> labelstripped = new List<string>(instructions.ToArray());
+
+            for (int i = 0; i < labelstripped.Count; i++)
+            {
+                if (labelstripped[i][0] == ':')
+                {
+                    //this is a label definition
+                    labelstripped[i] = ";";
+                    continue;
+                }
+                //this is an instruction that might use a label
+                string opcode = labelstripped[i].Substring(0, labelstripped[i].IndexOf(' '));
+                string[] args = labelstripped[i].Substring(labelstripped[i].IndexOf(' ') + 1).Split(',');
+                for (int j = 0; j < args.Length; j++)
+                {
+                    //split the argument up into its components
+                    List<string> parts = new List<string>();
+                    string separators = "[]+";
+                    parts.Add("");
+                    //remove all spaces from arguments
+                    string temp = "";
+                    foreach (char c in args[j])
+                        if (c != ' ')
+                            temp += c;
+                    args[j] = temp;
+                    for (int k = 0; k < args[j].Length; k++)
+                        if (separators.Contains(args[j][k]))
+                        {
+                            parts.Add(args[j][k].ToString());
+                            parts.Add("");
+                        }
                         else
-                            code.AddRange(encode(instruction));
-            return code.ToArray();
+                            parts[parts.Count - 1] += args[j][k];
+                    //parts now has the argument in sections
+                    args[j] = "";
+                    foreach (string part in parts)
+                        if (labels.ContainsKey(part))
+                            args[j] += "label";//replace every label name with "label"
+                        else
+                            args[j] += part;
+                }
+                //reconstruct the instruction
+                labelstripped[i] = opcode + " "+args[0];
+                for (int j = 1; j < args.Length; j++)
+                    labelstripped[i] += "," + args[j];
+            }
+            //labelstripped has now got ";" instead of label defs, (to keep the indices aligned) and all labels are called "label"
+            int address=0;
+            for (int i = 0; i < instructions.Count; i++)
+            {
+                if (instructions[i][0] == ':')
+                    //dealing with a label
+                    labels[instructions[i].Substring(1)] = (ushort)address;
+                else address += length(labelstripped[i]);
+            }
+            //dictionary is now filled.
+            //time to resolve labels.
+            for (int i = 0; i < instructions.Count; i++)
+            {
+                if (instructions[i][0] != ':')
+                {
+                    string opcode = instructions[i].Substring(0, instructions[i].IndexOf(' '));
+                    string[] args = instructions[i].Substring(instructions[i].IndexOf(' ') + 1).Split(',');
+                    bool haslabel=false;
+                    for (int j = 0; j < args.Length; j++)
+                    {
+                        //split the argument up into its components
+                        List<string> parts = new List<string>();
+                        string separators = " []+";
+                        parts.Add("");
+                        for (int k = 0; k < args[j].Length; k++)
+                            if (separators.Contains(args[j][k]))
+                            {
+                                parts.Add(args[j][k].ToString());
+                                parts.Add("");
+                            }
+                            else
+                                parts[parts.Count - 1] += args[j][k];
+                        //parts now has the argument in sections
+                        args[j] = "";
+                        foreach (string part in parts)
+                            if (labels.ContainsKey(part))
+                            {
+                                haslabel=true;
+                                args[j] += labels[part];//replace every label name with "label"
+                            }
+                            else
+                                args[j] += part;
+                    }
+                    //reconstruct the instruction
+                    instructions[i] = opcode + " " + args[0];
+                    for (int j = 1; j < args.Length; j++)
+                        instructions[i] += "," + args[j];
+                    if (haslabel)
+                        instructions[i]+='l';//I postfix instructions containing labels with 'l' for later
+                }
+            }
+            //labels are resolved. Now get rid of them
+            for (int i = 0; i < instructions.Count; i++)
+                if (instructions[i][0] == ':')
+                {
+                    instructions.RemoveAt(i);
+                    i--;
+                    continue;
+                }
+            //compile time
+            List<ushort> output = new List<ushort>();
+            foreach (string instruction in instructions)
+                if (instruction[instruction.Length - 1] == 'l')
+                    output.AddRange(encode(instruction.Substring(0, instruction.Length - 1), false));
+                else output.AddRange(encode(instruction));
+            return output.ToArray();
         }
         /// <summary>
         /// Returns how many words long an instruction will be
@@ -77,14 +165,9 @@ namespace DCPU16_emu
         public static int length(string instruction)
         {
             //an instruction will always have a space after the mnemonic
-            if (instruction.Trim()[0]==':')
-                return 0;
-            else
-            {
-                bool haslabel = instruction.Contains("label");
-                instruction = instruction.Replace("label", "128");
-                return encode(instruction,!haslabel).Length;
-            }
+            bool haslabel = instruction.Contains("label");
+            instruction = instruction.Replace("label", "128");
+            return encode(instruction,!haslabel).Length;
         }
         /// <summary>
         /// Returns instruction words for the mnemonic. Does not resolve labels.
@@ -175,9 +258,14 @@ namespace DCPU16_emu
                         if (char.IsNumber(bstr[1]))
                             // yoda instruction: [5+a]
                             // convert to normal style
-                            bstr = '[' + bstr.Substring(bstr.IndexOf('+') + 1, bstr.IndexOf(']') - bstr.IndexOf('+')) + '+' + bstr.Substring(1, bstr.IndexOf('+') - 1);
+                            bstr = '[' + bstr.Substring(bstr.IndexOf('+') + 1, bstr.IndexOf(']') - bstr.IndexOf('+') - 1) + '+' + bstr.Substring(1, bstr.IndexOf('+') - 1) + ']';
                         b = 0x10;
-                        bliteral = ushort.Parse(bstr.Substring(bstr.IndexOf('+') + 1, bstr.IndexOf(']') - bstr.IndexOf('+')));
+                        string blitstr = bstr.Substring(bstr.IndexOf('+') + 1, bstr.IndexOf(']') - bstr.IndexOf('+') - 1);
+                        if (blitstr.StartsWith("0x"))
+                            bliteral = ushort.Parse(blitstr.Substring(2), NumberStyles.HexNumber);
+                        else if (blitstr.StartsWith("0b"))
+                            bliteral = Convert.ToUInt16(blitstr, 2);
+                        else bliteral = ushort.Parse(blitstr);
                         bstr = bstr.Substring(1, bstr.IndexOf('+') - 1);//this and the next line leave only the register name/memory address
                     }
                     else bstr = bstr.Substring(1, bstr.Length - 2);
@@ -216,6 +304,11 @@ namespace DCPU16_emu
                         break;
                     default:
                         //this must be a literal
+                        if (bstr.StartsWith("0x"))
+                            bstr = ushort.Parse(bstr.Substring(2),NumberStyles.HexNumber).ToString();
+                        else if (bstr.StartsWith("0b"))
+                            bstr=Convert.ToUInt16(bstr.Substring(2),2).ToString();
+
                         if (b == 0x8)
                         {
                             // [literal]
@@ -247,9 +340,15 @@ namespace DCPU16_emu
                         if (char.IsNumber(astr[1]))
                             // yoda instruction: [5+a]
                             // convert to normal style
-                            astr = '[' + astr.Substring(astr.IndexOf('+') + 1, astr.IndexOf(']') - astr.IndexOf('+')) + '+' + astr.Substring(1, astr.IndexOf('+') - 1);
+                            astr = '[' + astr.Substring(astr.IndexOf('+') + 1, astr.IndexOf(']') - astr.IndexOf('+')-1) + '+' + astr.Substring(1, astr.IndexOf('+') - 1)+']';
                         a = 0x10;
-                        aliteral = ushort.Parse(astr.Substring(astr.IndexOf('+') + 1, astr.IndexOf(']') - astr.IndexOf('+')));
+                        string alitstr = astr.Substring(astr.IndexOf('+') + 1, astr.IndexOf(']') - astr.IndexOf('+') - 1);
+                        if (alitstr.StartsWith("0x"))
+                            aliteral = ushort.Parse(alitstr.Substring(2), NumberStyles.HexNumber);
+                        else if (alitstr.StartsWith("0b"))
+                            aliteral=Convert.ToUInt16(alitstr,2);
+                        else aliteral = ushort.Parse(alitstr);
+
                         astr = astr.Substring(1, astr.IndexOf('+') - 1);//this and the next line leave only the register name/memory address
                     }
                     else astr = astr.Substring(1, astr.Length - 2);
@@ -288,18 +387,26 @@ namespace DCPU16_emu
                         break;
                     default:
                         //this must be a literal
+                        if (astr.StartsWith("0x"))
+                            astr = ushort.Parse(astr.Substring(2), NumberStyles.HexNumber).ToString();
+                        else if (astr.StartsWith("0b"))
+                            astr = Convert.ToUInt16(astr.Substring(2), 2).ToString();
+
                         if (a == 0x8)
                         {
                             // [literal]
                             a = 0x1e;
                             aliteral = ushort.Parse(astr);
                         }
-                        else if (ushort.Parse(astr) < 32 && allowLiteralOptimization)
+                        else if (int.Parse(astr) < 32 && int.Parse(astr)>0 && allowLiteralOptimization)//TODO: allow negative literals. Signinggggg
                             a = (byte)(byte.Parse(astr) + 0x20);
                         else
                         {
                             a = 0x1f;
-                            aliteral = ushort.Parse(astr);
+                            if (int.Parse(astr) < 0)
+                                aliteral = (ushort)(65536 + int.Parse(astr));
+                            else
+                                aliteral = ushort.Parse(astr);
                         }
                         break;
                 }
