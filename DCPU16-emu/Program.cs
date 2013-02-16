@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 using System.Diagnostics;
+using System.IO;
 
 namespace DCPU16_emu
 {
@@ -15,13 +16,10 @@ namespace DCPU16_emu
         static void Main()
         {
             //testing code
-            string p = @"set a,5
-set b,6
-:loop
-add b, 1
-set pc,[loop]
-set pc,loop
-";
+            StreamReader sr = new StreamReader("dcputest.asm");
+            string p = sr.ReadToEnd();
+            sr.Close();
+
             string[] program = p.Split(new char[] { '\n', '\r' },StringSplitOptions.RemoveEmptyEntries);
 
 
